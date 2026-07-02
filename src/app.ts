@@ -330,14 +330,6 @@ const swaggerSpec = {
     }
   }
 },
-  "/multisig/proposals": {
-      post: {
-        summary: "Create multisig proposal",
-        responses: {
-          201: { description: "Proposal created" }
-        }
-      }
-    },
 "/multisig/{id}/execute": {
   post: {
     summary: "Execute approved multisig transfer",
