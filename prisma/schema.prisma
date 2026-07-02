@@ -1,0 +1,167 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  COMPLIANCE
+  OPERATOR
+  VIEWER
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum TokenType {
+  ERC20
+  ERC1400
+  INTERNAL_LEDGER
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+}
+
+enum MultisigStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         Role     @default(VIEWER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs    AuditLog[]
+  approvals    MultisigApproval[]
+}
+
+model Investor {
+  id           String    @id @default(uuid())
+  name         String
+  countryCode  String
+  email        String?   @unique
+  kycStatus    KycStatus @default(PENDING)
+  riskScore    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  wallets      Wallet[]
+  transferFrom TransferRequest[] @relation("TransferFromInvestor")
+  transferTo   TransferRequest[] @relation("TransferToInvestor")
+}
+
+model Wallet {
+  id           String   @id @default(uuid())
+  address      String   @unique
+  chain        String
+  whitelisted  Boolean  @default(false)
+  blocked      Boolean  @default(false)
+  investorId   String
+  investor     Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Token {
+  id              String    @id @default(uuid())
+  symbol          String    @unique
+  name            String
+  tokenType       TokenType @default(ERC1400)
+  contractAddress String?
+  chain           String
+  totalSupply     Decimal   @default(0)
+  paused          Boolean   @default(false)
+  requiresKyc     Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  partitions      TokenPartition[]
+  transferRequests TransferRequest[]
+}
+
+model TokenPartition {
+  id              String   @id @default(uuid())
+  tokenId         String
+  token           Token    @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  name            String
+  lockupUntil     DateTime?
+  allowedCountries String[]
+  blockedCountries String[]
+  createdAt       DateTime @default(now())
+
+  @@unique([tokenId, name])
+}
+
+model TransferRequest {
+  id             String         @id @default(uuid())
+  tokenId        String
+  token          Token          @relation(fields: [tokenId], references: [id])
+  partitionId    String?
+  fromInvestorId String
+  fromInvestor   Investor      @relation("TransferFromInvestor", fields: [fromInvestorId], references: [id])
+  toInvestorId   String
+  toInvestor     Investor      @relation("TransferToInvestor", fields: [toInvestorId], references: [id])
+  amount         Decimal
+  status         TransferStatus @default(PENDING)
+  rejectionReason String?
+  validationCode String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  multisig       MultisigRequest?
+}
+
+model MultisigRequest {
+  id                String        @id @default(uuid())
+  transferRequestId String        @unique
+  transferRequest   TransferRequest @relation(fields: [transferRequestId], references: [id], onDelete: Cascade)
+  requiredApprovals Int           @default(2)
+  status            MultisigStatus @default(PENDING)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  approvals         MultisigApproval[]
+}
+
+model MultisigApproval {
+  id                String          @id @default(uuid())
+  multisigRequestId String
+  multisigRequest   MultisigRequest @relation(fields: [multisigRequestId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User            @relation(fields: [userId], references: [id])
+  approved          Boolean
+  comment           String?
+  createdAt         DateTime        @default(now())
+
+  @@unique([multisigRequestId, userId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
